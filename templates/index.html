@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <h1>Pi Video Surveillance</h1>
+    <select name="video selection" method="GET" action="/">
+        {% for video in clips %}
+        <option value="{{ video }}" >{{video}}</option>
+        {% endfor %}
+    </select>
+    <br/>
+    <img src="{{ url_for('video_feed') }}">
+</body>
+</html>
