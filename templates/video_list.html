@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Recorded videos{% endblock %}
+{% block content %}
+    <h1>Recorded videos</h1>
+    <div class="list-group">
+    {% for video in videos %}
+        <a class="list-group-item list-group-item-action" href="/video/{{video}}">{{video}}</a>
+    {% endfor %}
+    </div>
+{% endblock %}

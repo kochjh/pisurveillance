@@ -17,8 +17,11 @@ import cv2
 # initialize the output frame and a lock used to ensure thread-safe
 # exchanges of the output frames (useful when multiple browsers/tabs
 # are viewing the stream)
-outputFrame = None
-lock = threading.Lock()
+camera_frame = None
+camera_lock = threading.Lock()
+
+video_frame = None
+video_lock = threading.Lock()
 # initialize a flask object
 app = Flask(__name__)
 # initialize the video stream and allow the camera sensor to
@@ -30,15 +33,41 @@ time.sleep(2.0)
 
 @app.route("/")
 def index():
-    clips_lst = [f for f in listdir("output/") if isfile(join("output/", f))]
     # return the rendered template
-    return render_template("index.html", clips=clips_lst)
+    return render_template("index.html")
+
+
+@app.route("/video_list")
+def video_list():
+    videos = [format_timestamp(f[:-4]) for f in listdir("output/") if isfile(join("output/", f))]
+    return render_template("video_list.html", videos=reversed(videos))
+
+
+@app.route("/video/<name>")
+def video(name):
+    t = threading.Thread(target=video_player, args=(str(name),), daemon=True)
+    t.start()
+    return render_template("video.html", video_name=name)
+
+
+def video_player(name):
+    global video_frame, video_lock
+    cap = cv2.VideoCapture("output/" + undo_format_timestamp(name) + '.avi')
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if ret:
+            with video_lock:
+                video_frame = frame.copy()
+        else:
+            cap.release()
+            break
+    cap.release()
 
 
 def detect_motion(frame_count, buffer_size, output, codec, fps):
     # grab global references to the video stream, output frame, and
     # lock variables
-    global vs, outputFrame, lock
+    global vs, camera_frame, camera_lock
     # initialize the motion detector and the total number of frames
     # read thus far
     md = SingleMotionDetector(accumWeight=0.1)
@@ -68,9 +97,9 @@ def detect_motion(frame_count, buffer_size, output, codec, fps):
             if motion is not None:
                 # unpack the tuple and draw the box surrounding the
                 # "motion area" on the output frame
-                (thresh, (minX, minY, maxX, maxY)) = motion
-                cv2.rectangle(frame, (minX, minY), (maxX, maxY),
-                              (0, 0, 255), 2)
+                # (thresh, (minX, minY, maxX, maxY)) = motion
+                # cv2.rectangle(frame, (minX, minY), (maxX, maxY),
+                #             (0, 0, 255), 2)
                 consec_frames = 0
                 # if we are not already recording, start recording
                 if not kcw.recording:
@@ -95,37 +124,82 @@ def detect_motion(frame_count, buffer_size, output, codec, fps):
 
         # acquire the lock, set the output frame, and release the
         # lock
-        with lock:
-            outputFrame = frame.copy()
+        with camera_lock:
+            camera_frame = frame.copy()
 
 
 @app.route("/video_feed")
 def video_feed():
     # return the response generated along with the specific media
     # type (mime type)
-    return Response(generate(),
+    return Response(generate_camera(),
                     mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-def generate():
+@app.route("/play_video")
+def play_video():
+    # return the response generated along with the specific media
+    # type (mime type)
+    return Response(generate_video(),
+                    mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+def generate_camera():
     # grab global references to the output frame and lock variables
-    global outputFrame, lock
+    global camera_frame, camera_lock
     # loop over frames from the output stream
     while True:
         # wait until the lock is acquired
-        with lock:
+        with camera_lock:
             # check if the output frame is available, otherwise skip
             # the iteration of the loop
-            if outputFrame is None:
+            if camera_frame is None:
                 continue
             # encode the frame in JPEG format
-            (flag, encodedImage) = cv2.imencode(".jpg", outputFrame)
+            (flag, encodedImage) = cv2.imencode(".jpg", camera_frame)
             # ensure the frame was successfully encoded
             if not flag:
                 continue
         # yield the output frame in the byte format
         yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' +
                bytearray(encodedImage) + b'\r\n')
+
+
+def generate_video():
+    # grab global references to the output frame and lock variables
+    global video_frame, video_lock
+    # loop over frames from the output stream
+    while True:
+        # wait until the lock is acquired
+        with video_lock:
+            # check if the output frame is available, otherwise skip
+            # the iteration of the loop
+            if video_frame is None:
+                continue
+            # encode the frame in JPEG format
+            (flag, encodedImage) = cv2.imencode(".jpg", video_frame)
+            # ensure the frame was successfully encoded
+            if not flag:
+                continue
+        # yield the output frame in the byte format
+        yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' +
+               bytearray(encodedImage) + b'\r\n')
+
+
+def format_timestamp(timestamp):
+    # input: yyyymmdd-hhmmss
+    date = '.'.join([timestamp[6:8], timestamp[4:6], timestamp[0:4]])
+    time = ':'.join([timestamp[9:11], timestamp[11:13], timestamp[13:15]])
+    # output: dd.mm.yyyy - hh:mm:ss
+    return date + ' - ' + time
+
+
+def undo_format_timestamp(timestamp):
+    # input: dd.mm.yyyy - hh:mm:ss
+    date = ''.join([timestamp[6:10], timestamp[3:5], timestamp[0:2]])
+    time = ''.join([timestamp[13:15], timestamp[16:18], timestamp[19:21]])
+    # output: yyyymmdd-hhmmss
+    return date + '-' + time
 
 
 # check to see if this is the main thread of execution
