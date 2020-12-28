@@ -40,7 +40,7 @@ def index():
 @app.route("/video_list")
 def video_list():
     videos = [format_timestamp(f[:-4]) for f in listdir("output/") if isfile(join("output/", f))]
-    return render_template("video_list.html", videos=reversed(videos))
+    return render_template("video_list.html", videos=reversed(sorted(videos)))
 
 
 @app.route("/video/<name>")
@@ -64,7 +64,7 @@ def video_player(name):
     cap.release()
 
 
-def detect_motion(frame_count, buffer_size, output, codec, fps):
+def detect_motion(frame_count, buffer_size, output, codec, fps, skip_frame):
     # grab global references to the video stream, output frame, and
     # lock variables
     global vs, camera_frame, camera_lock
@@ -90,7 +90,7 @@ def detect_motion(frame_count, buffer_size, output, codec, fps):
         # if the total number of frames has reached a sufficient
         # number to construct a reasonable background model, then
         # continue to process the frame
-        if total > frame_count:
+        if total > frame_count and total % skip_frame == 0:
             # detect motion in the image
             motion = md.detect(gray)
             # check to see if motion was found in the frame
@@ -115,8 +115,12 @@ def detect_motion(frame_count, buffer_size, output, codec, fps):
         md.update(gray)
         # update the key frame clip buffer
         kcw.update(frame)
-        if total <= frame_count:
-            total += 1
+        total += 1
+        if total == 1000:
+            # reset to 0
+            total = 0
+            # not needed anymore
+            frame_count = -1
 
         if kcw.recording and consec_frames == buffer_size:
             print('[INFO] stop recording')
@@ -222,10 +226,13 @@ if __name__ == '__main__':
                     help="codec of output video")
     ap.add_argument("-b", "--buffer-size", type=int, default=32,
                     help="buffer size of video clip writer")
+    ap.add_argument("-sk", "--skip-frame", type=int, default=1,
+                    help="how many frames should be skipped in movement detection. 1 will skip no frames, 2 will skip "
+                         "every second frame, 3 will skip every third frame...")
     args = vars(ap.parse_args())
     # start a thread that will perform motion detection
     t = threading.Thread(target=detect_motion, args=(
-        args["frame_count"], args['buffer_size'], args['output'], args['codec'], args['fps']))
+        args["frame_count"], args['buffer_size'], args['output'], args['codec'], args['fps'], args['skip_frame']))
     t.daemon = True
     t.start()
     # start the flask app
