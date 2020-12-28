@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Live camera{% endblock %}
 {% block content %}
+<div  style="display: flex; flex-direction: column; align-items: center; height: 80vh;">
     <h1>Live camera</h1>
-    <img class="img-fluid" src="{{ url_for('video_feed') }}">
+    <img src="{{ url_for('video_feed') }}">
+</div>
 {% endblock %}

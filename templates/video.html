@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Live camera{% endblock %}
 {% block content %}
-<h2>{{ video_name }}</h2>
-<img src="{{ url_for('play_video') }}">
+<div  style="display: flex; flex-direction: column; align-items: center; height: 80vh;">
+    <h2>{{ video_name }}</h2>
+    <img src="{{ url_for('play_video') }}">
+</div>
 {% endblock %}
 

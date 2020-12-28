@@ -22,6 +22,8 @@ camera_lock = threading.Lock()
 
 video_frame = None
 video_lock = threading.Lock()
+
+output_folder = ""
 # initialize a flask object
 app = Flask(__name__)
 # initialize the video stream and allow the camera sensor to
@@ -39,7 +41,7 @@ def index():
 
 @app.route("/video_list")
 def video_list():
-    videos = [format_timestamp(f[:-4]) for f in listdir("output/") if isfile(join("output/", f))]
+    videos = [format_timestamp(f[:-4]) for f in listdir(output_folder) if isfile(join(output_folder, f))]
     return render_template("video_list.html", videos=reversed(sorted(videos)))
 
 
@@ -52,7 +54,7 @@ def video(name):
 
 def video_player(name):
     global video_frame, video_lock
-    cap = cv2.VideoCapture("output/" + undo_format_timestamp(name) + '.avi')
+    cap = cv2.VideoCapture("{}/{}.avi".format(output_folder, undo_format_timestamp(name)))
     while cap.isOpened():
         ret, frame = cap.read()
         if ret:
@@ -64,7 +66,7 @@ def video_player(name):
     cap.release()
 
 
-def detect_motion(frame_count, buffer_size, output, codec, fps, skip_frame):
+def detect_motion(frame_count, buffer_size, codec, fps, skip_frame):
     # grab global references to the video stream, output frame, and
     # lock variables
     global vs, camera_frame, camera_lock
@@ -105,7 +107,7 @@ def detect_motion(frame_count, buffer_size, output, codec, fps, skip_frame):
                 if not kcw.recording:
                     print('[INFO] start recording')
                     timestamp = datetime.datetime.now()
-                    p = "{}/{}.avi".format(output, timestamp.strftime("%Y%m%d-%H%M%S"))
+                    p = "{}/{}.avi".format(output_folder, timestamp.strftime("%Y%m%d-%H%M%S"))
                     kcw.start(p, cv2.VideoWriter_fourcc(*codec), fps)
             else:
                 consec_frames += 1
@@ -230,9 +232,10 @@ if __name__ == '__main__':
                     help="how many frames should be skipped in movement detection. 1 will skip no frames, 2 will skip "
                          "every second frame, 3 will skip every third frame...")
     args = vars(ap.parse_args())
+    output_folder = args['output']
     # start a thread that will perform motion detection
     t = threading.Thread(target=detect_motion, args=(
-        args["frame_count"], args['buffer_size'], args['output'], args['codec'], args['fps'], args['skip_frame']))
+        args["frame_count"], args['buffer_size'], args['codec'], args['fps'], args['skip_frame']))
     t.daemon = True
     t.start()
     # start the flask app
